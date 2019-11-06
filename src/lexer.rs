@@ -1,5 +1,9 @@
 use logos::Logos;
 
+pub struct UnitOfToken {
+    token: Token,
+    slice: String,
+}
 #[derive(Debug, PartialEq, Clone, Copy, Logos)]
 pub enum Token {
     #[end]
@@ -146,4 +150,19 @@ pub enum Token {
 
     #[token = "||"]
     OperatorLogicalOr,
+
+    #[token = "="]
+    Assign,
+
+    #[token = "+="]
+    AssignAddition,
+
+    #[token = "-="]
+    AssignSubtraction,
+
+    #[token = "*="]
+    AssignMultiplication,
+
+    #[token = "/="]
+    AssignDivision,
 }

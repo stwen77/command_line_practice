@@ -1,0 +1,7 @@
+let a
+let z = +123
+let zz = 1*(2+3)
+let x = "abcd"
+let xx = "aaa"
+
+
