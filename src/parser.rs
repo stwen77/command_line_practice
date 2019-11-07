@@ -67,6 +67,48 @@ pub fn parse_statement<'a>(lexer: &mut Tokeniter<'a>) -> Result<Statment, ()> {
     }
 }
 
+fn parse_stub<'a>(lexer: &mut Tokeniter<'a>) -> Result<Expr, ()> {
+    Ok(Expr::TempStub)
+}
+
+fn parse_block<'a>(lexer: &mut Tokeniter<'a>) -> Result<Statment, ()> {
+    match lexer.peek() {
+        Some((Token::LCurly,_)) => (),
+        _ => panic!(),
+    }
+
+    lexer.next();
+
+    let mut stmts = Vec::new();
+
+    let skip_body = match lexer.peek() {
+        Some((Token::RCurly,_)) => true,
+        _ => false,
+    };
+
+    if !skip_body {
+        while let Some(_) = lexer.peek() {
+            stmts.push(parse_statement(lexer)?);
+
+            if let Some((Token::Semicolon,_)) = lexer.peek() {
+                lexer.next();
+            }
+
+            if let Some((Token::RCurly,_)) = lexer.peek() {
+                break;
+            }
+        }
+    }
+
+    match lexer.peek() {
+        Some((Token::RCurly,_)) => {
+            lexer.next();
+            Ok(Statment::Block(stmts))
+        }
+        _ => panic!(),
+    }
+}
+
 pub fn parse_var<'a>(lexer: &mut Tokeniter<'a>) -> Result<Statment, ()> {
     lexer.next();
 
@@ -140,10 +182,6 @@ fn parse_primary<'a>(lexer: &mut Tokeniter<'a>) -> Result<Expr, ()> {
     };
 
     result
-}
-
-fn parse_stub<'a>(lexer: &mut Tokeniter<'a>) -> Result<Expr, ()> {
-    Ok(Expr::TempStub)
 }
 
 fn parse_binary_operation<'a>(input: &mut Tokeniter<'a>, prec: i32, lhs: Expr) -> Result<Expr, ()> {
