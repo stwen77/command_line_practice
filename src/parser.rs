@@ -54,7 +54,9 @@ pub fn parse<'a>(lexer: &mut Vec<(Token, &'a str)>) {
             Token::DeclarationFunction => fndefs.push(Token::DeclarationFunction),
             _ => stmts.push(parse_statement(&mut lexer).unwrap()),
         }
-        //lexer.next();
+        if let Some((Token::Semicolon, _)) = lexer.peek() {
+            lexer.next(); //skip the semicolon
+        }
     }
     println!("parsed statment vec :{:?}", stmts);
     println!("parsed function vec :{:?}", fndefs);
@@ -62,27 +64,68 @@ pub fn parse<'a>(lexer: &mut Vec<(Token, &'a str)>) {
 
 pub fn parse_statement<'a>(lexer: &mut Tokeniter<'a>) -> Result<Statment, ()> {
     match lexer.peek().unwrap().0 {
+        Token::If => parse_if(lexer),
+        Token::While => parse_while(lexer),
+        Token::Break => {
+            lexer.next();
+            Ok(Statment::Break)
+        }
+        Token::Return => {
+            lexer.next();
+            match lexer.peek().unwrap().0 {
+                Token::Semicolon => Ok(Statment::Return),
+                _ => {
+                    let ret = parse_expr(lexer)?;
+                    Ok(Statment::ReturnWithVal(Box::new(ret)))
+                }
+            }
+        }
         Token::DeclarationLet => parse_var(lexer),
+        Token::LCurly => parse_block(lexer),
         _ => Ok(Statment::TempStub),
     }
 }
 
-fn parse_stub<'a>(lexer: &mut Tokeniter<'a>) -> Result<Expr, ()> {
-    Ok(Expr::TempStub)
+fn parse_if<'a>(lexer: &mut Tokeniter<'a>) -> Result<Statment, ()> {
+    lexer.next();
+
+    let guard = parse_expr(lexer)?;
+    let body = parse_block(lexer)?;
+
+    match lexer.peek().unwrap().0 {
+        Token::Else => {
+            lexer.next();
+            let else_body = parse_block(lexer)?;
+            Ok(Statment::IfElse(
+                Box::new(guard),
+                Box::new(body),
+                Box::new(else_body),
+            ))
+        }
+        _ => Ok(Statment::If(Box::new(guard), Box::new(body))),
+    }
+}
+
+fn parse_while<'a>(lexer: &mut Tokeniter<'a>) -> Result<Statment, ()> {
+    lexer.next();
+
+    let guard = parse_expr(lexer)?;
+    let body = parse_block(lexer)?;
+
+    Ok(Statment::While(Box::new(guard), Box::new(body)))
 }
 
 fn parse_block<'a>(lexer: &mut Tokeniter<'a>) -> Result<Statment, ()> {
     match lexer.peek() {
-        Some((Token::LCurly,_)) => (),
+        Some((Token::LCurly, _)) => (),
         _ => panic!(),
     }
-
     lexer.next();
 
     let mut stmts = Vec::new();
 
     let skip_body = match lexer.peek() {
-        Some((Token::RCurly,_)) => true,
+        Some((Token::RCurly, _)) => true,
         _ => false,
     };
 
@@ -90,18 +133,18 @@ fn parse_block<'a>(lexer: &mut Tokeniter<'a>) -> Result<Statment, ()> {
         while let Some(_) = lexer.peek() {
             stmts.push(parse_statement(lexer)?);
 
-            if let Some((Token::Semicolon,_)) = lexer.peek() {
+            if let Some((Token::Semicolon, _)) = lexer.peek() {
                 lexer.next();
             }
 
-            if let Some((Token::RCurly,_)) = lexer.peek() {
+            if let Some((Token::RCurly, _)) = lexer.peek() {
                 break;
             }
         }
     }
 
     match lexer.peek() {
-        Some((Token::RCurly,_)) => {
+        Some((Token::RCurly, _)) => {
             lexer.next();
             Ok(Statment::Block(stmts))
         }
@@ -157,12 +200,27 @@ fn parse_unary<'a>(lexer: &mut Tokeniter<'a>) -> Result<Expr, ()> {
 }
 
 fn parse_paren_expr<'a>(input: &mut Tokeniter<'a>) -> Result<Expr, ()> {
-    println!("debug");
     let expr = parse_expr(input)?;
 
     match input.next().unwrap().0 {
         Token::RParen => Ok(expr),
         _ => panic!(),
+    }
+}
+
+fn parse_ident_expr<'a>(id: String, lexer: &mut Tokeniter<'a>) -> Result<Expr, ()> {
+    match lexer.peek() {
+        Some((Token::LParen, _)) => {
+            lexer.next();
+            //parse_call_expr(id, input) todo
+            panic!()
+        }
+        Some((Token::LSquare, _)) => {
+            lexer.next();
+            //parse_index_expr(id, input)
+            panic!()
+        }
+        _ => Ok(Expr::Identifier(id)),
     }
 }
 
@@ -173,7 +231,7 @@ fn parse_primary<'a>(lexer: &mut Tokeniter<'a>) -> Result<Expr, ()> {
         Token::LiteralInteger => Ok(Expr::IntConst(slice.parse::<i32>().unwrap())),
         //Token::Float
         Token::LiteralString => Ok(Expr::StringConst(slice.to_string())),
-        //Token::Identifier(ref s) => parse_ident_expr(s.clone(), input),
+        Token::Identifier => parse_ident_expr(slice.to_string(), lexer),
         Token::LParen => parse_paren_expr(lexer),
         //Token::LSquare => parse_array_expr(input),
         Token::LiteralTrue => Ok(Expr::True),

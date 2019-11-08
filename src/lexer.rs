@@ -60,6 +60,21 @@ pub enum Token {
     #[token = "let"]
     DeclarationLet,
 
+    #[token = "return"]
+    Return,
+
+    #[token = "while"]
+    While,
+
+    #[token = "Break"]
+    Break,
+
+    #[token = "if"]
+    If,
+
+    #[token = "else"]
+    Else,
+
     #[token = "bool"]
     TypeBool,
 
