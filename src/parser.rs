@@ -1,4 +1,4 @@
-use crate::lexer::{Token, UnitOfToken};
+use crate::lexer::Token;
 use crate::logos::Logos;
 
 pub type Lexer<S> = logos::Lexer<Token, S>;
@@ -44,14 +44,14 @@ pub enum Expr {
 }
 pub type Tokeniter<'a> = std::iter::Peekable<std::slice::Iter<'a, (Token, &'a str)>>;
 
-pub fn parse<'a>(lexer: &mut Vec<(Token, &'a str)>) {
+pub fn parse<'a>(lexer: &mut Vec<(Token, &'a str)>) -> Result<(Vec<Statment>, Vec<FnDef>), ()> {
     let mut stmts = Vec::new();
     let mut fndefs = Vec::new();
     let mut lexer = lexer.iter().peekable();
     while lexer.peek().is_some() {
         //println!("xxxxx token: {:?} ", lexer.peek());
         match lexer.peek().unwrap().0 {
-            Token::DeclarationFunction => fndefs.push(Token::DeclarationFunction),
+            Token::DeclarationFunction => fndefs.push(parse_fn(&mut lexer).unwrap()),
             _ => stmts.push(parse_statement(&mut lexer).unwrap()),
         }
         if let Some((Token::Semicolon, _)) = lexer.peek() {
@@ -60,6 +60,54 @@ pub fn parse<'a>(lexer: &mut Vec<(Token, &'a str)>) {
     }
     println!("parsed statment vec :{:?}", stmts);
     println!("parsed function vec :{:?}", fndefs);
+    Ok((stmts, fndefs))
+}
+
+fn parse_fn<'a>(lexer: &mut Tokeniter<'a>) -> Result<FnDef, ()> {
+    lexer.next();
+
+    let name = match lexer.next() {
+        Some((Token::Identifier, s)) => s.to_string(),
+        _ => return Err(()),
+    };
+
+    match lexer.peek().unwrap().0 {
+        Token::LParen => {
+            lexer.next();
+        }
+        _ => panic!(),
+    }
+
+    let mut params = Vec::new();
+
+    let skip_params = match lexer.peek().unwrap().0 {
+        Token::RParen => {
+            lexer.next();
+            true
+        }
+        _ => false,
+    };
+
+    if !skip_params {
+        loop {
+            match lexer.next() {
+                Some((Token::RParen, _)) => break,
+                Some((Token::Comma, _)) => (),
+                Some((Token::Identifier, s)) => {
+                    params.push(s.to_string());
+                }
+                _ => panic!(),
+            }
+        }
+    }
+
+    let body = parse_block(lexer)?;
+
+    Ok(FnDef {
+        name: name,
+        params: params,
+        body: Box::new(body),
+    })
 }
 
 pub fn parse_statement<'a>(lexer: &mut Tokeniter<'a>) -> Result<Statment, ()> {
@@ -199,10 +247,10 @@ fn parse_unary<'a>(lexer: &mut Tokeniter<'a>) -> Result<Expr, ()> {
     }
 }
 
-fn parse_paren_expr<'a>(input: &mut Tokeniter<'a>) -> Result<Expr, ()> {
-    let expr = parse_expr(input)?;
+fn parse_paren_expr<'a>(lexer: &mut Tokeniter<'a>) -> Result<Expr, ()> {
+    let expr = parse_expr(lexer)?;
 
-    match input.next().unwrap().0 {
+    match lexer.next().unwrap().0 {
         Token::RParen => Ok(expr),
         _ => panic!(),
     }
@@ -212,12 +260,12 @@ fn parse_ident_expr<'a>(id: String, lexer: &mut Tokeniter<'a>) -> Result<Expr, (
     match lexer.peek() {
         Some((Token::LParen, _)) => {
             lexer.next();
-            //parse_call_expr(id, input) todo
+            //parse_call_expr(id, lexer) todo
             panic!()
         }
         Some((Token::LSquare, _)) => {
             lexer.next();
-            //parse_index_expr(id, input)
+            //parse_index_expr(id, lexer)
             panic!()
         }
         _ => Ok(Expr::Identifier(id)),
@@ -233,7 +281,7 @@ fn parse_primary<'a>(lexer: &mut Tokeniter<'a>) -> Result<Expr, ()> {
         Token::LiteralString => Ok(Expr::StringConst(slice.to_string())),
         Token::Identifier => parse_ident_expr(slice.to_string(), lexer),
         Token::LParen => parse_paren_expr(lexer),
-        //Token::LSquare => parse_array_expr(input),
+        //Token::LSquare => parse_array_expr(lexer),
         Token::LiteralTrue => Ok(Expr::True),
         Token::LiteralFalse => Ok(Expr::False),
         _ => Ok(Expr::TempStub),
@@ -242,13 +290,13 @@ fn parse_primary<'a>(lexer: &mut Tokeniter<'a>) -> Result<Expr, ()> {
     result
 }
 
-fn parse_binary_operation<'a>(input: &mut Tokeniter<'a>, prec: i32, lhs: Expr) -> Result<Expr, ()> {
+fn parse_binary_operation<'a>(lexer: &mut Tokeniter<'a>, prec: i32, lhs: Expr) -> Result<Expr, ()> {
     let mut lhs_curr = lhs;
 
     loop {
         let mut curr_prec = -1;
 
-        if let Some((curr_op, _)) = input.peek() {
+        if let Some((curr_op, _)) = lexer.peek() {
             curr_prec = get_precedence(curr_op);
         }
 
@@ -256,20 +304,20 @@ fn parse_binary_operation<'a>(input: &mut Tokeniter<'a>, prec: i32, lhs: Expr) -
             return Ok(lhs_curr);
         }
 
-        if let Some((op_token, _)) = input.next() {
-            let mut rhs = parse_unary(input)?;
+        if let Some((op_token, _)) = lexer.next() {
+            let mut rhs = parse_unary(lexer)?;
 
             let mut next_prec = -1;
 
-            if let Some((next_op, _)) = input.peek() {
+            if let Some((next_op, _)) = lexer.peek() {
                 next_prec = get_precedence(next_op);
             }
 
             if curr_prec < next_prec {
-                rhs = parse_binary_operation(input, curr_prec + 1, rhs)?;
+                rhs = parse_binary_operation(lexer, curr_prec + 1, rhs)?;
             } else if curr_prec >= 100 {
                 // Always bind right to left for precedence over 100
-                rhs = parse_binary_operation(input, curr_prec, rhs)?;
+                rhs = parse_binary_operation(lexer, curr_prec, rhs)?;
             }
 
             lhs_curr = match op_token {

@@ -1,9 +1,5 @@
 use logos::Logos;
 
-pub struct UnitOfToken {
-    token: Token,
-    slice: String,
-}
 #[derive(Debug, PartialEq, Clone, Copy, Logos)]
 pub enum Token {
     #[end]
